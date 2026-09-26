@@ -220,24 +220,26 @@ for (const surface of $$('.drag-surface')) {
 // ------------------------------------------------------------
 // Seção 05–07: rótulos flutuantes e legendas de cena
 // ------------------------------------------------------------
+// momentos da sequência: a cena 3D tem a própria linha do tempo (kt troca quando ela carrega)
+let kt = (n) => keyTime(n);
 const LABELS = [
-  { text: 'Liberdade de movimento', joint: J.rEl, from: keyTime('toss'), to: keyTime('contact'), side: 'right', dx: 28, dy: -8 },
-  { text: 'Performance', joint: J.lWr, from: keyTime('contact'), to: keyTime('split'), side: 'left', dx: -30, dy: 0 },
-  { text: 'Leveza', joint: J.lAn, from: keyTime('split'), to: keyTime('backswing'), side: 'right', dx: 34, dy: -10 },
-  { text: 'Elasticidade', joint: J.chest, from: keyTime('backswing'), to: keyTime('finish'), side: 'left', dx: -60, dy: -6 },
-  { text: 'Conforto', joint: J.lSh, from: keyTime('finish'), to: keyTime('lunge'), side: 'right', dx: 40, dy: -18 },
+  { text: 'Liberdade de movimento', joint: J.rEl, fromKey: 'toss', toKey: 'contact', side: 'right', dx: 28, dy: -8 },
+  { text: 'Performance', joint: J.lWr, fromKey: 'contact', toKey: 'split', side: 'left', dx: -30, dy: 0 },
+  { text: 'Leveza', joint: J.lAn, fromKey: 'split', toKey: 'backswing', side: 'right', dx: 34, dy: -10 },
+  { text: 'Elasticidade', joint: J.chest, fromKey: 'backswing', toKey: 'finish', side: 'left', dx: -60, dy: -6 },
+  { text: 'Conforto', joint: J.lSh, fromKey: 'finish', toKey: 'lunge', side: 'right', dx: 40, dy: -18 },
 ];
 $('#floatLabels').innerHTML = LABELS.map((l) => `<span class="flabel ${l.side}"><i></i>${l.text}</span>`).join('');
 const labelEls = $$('#floatLabels .flabel');
 const labels = LABELS.map((l, i) => ({ ...l, el: labelEls[i], on: false }));
 
-const CAPTIONS = [
-  [keyTime('stand'), 'Escritório'],
-  [keyTime('walkA'), 'Viagem · Cidade'],
-  [keyTime('coffee'), 'Café'],
-  [keyTime('gesture'), 'Reunião'],
-  [keyTime('confident'), 'Networking'],
-];
+const CAPTION_KEYS = [['stand', 'Escritório'], ['walkA', 'Viagem · Cidade'], ['coffee', 'Café'], ['gesture', 'Reunião'], ['confident', 'Networking']];
+let CAPTIONS = [];
+function retime() {
+  for (const l of labels) { l.from = kt(l.fromKey); l.to = kt(l.toKey); }
+  CAPTIONS = CAPTION_KEYS.map(([k, text]) => [kt(k), text]).sort((a, b) => a[0] - b[0]);
+}
+retime();
 const caption = $('#sceneCaption');
 let captionText = '';
 function updateCaption(t, visible) {
@@ -385,8 +387,18 @@ async function setupGL() {
     views.peca = stage.add(new V.PecaView(chapters.peca.stage, polos.peca, stage));
     views.peca.markers = pecaMarkers;
     // a camisa real do personagem usa as fotos do giro 360°
-    const spin = assets.spin || (await import('./gl/polo.js')).loadSpins();
-    views.movimento = stage.add(new V.MovimentoView(chapters.movimento.stage, stage, await spin));
+    // personagem 3D (X Bot + polo 3D); se não carregar, volta para o de partículas
+    const C = await import('./gl/character.js');
+    const charData = await C.loadCharacterData().catch(() => null);
+    if (charData) {
+      const { Movimento3DView } = await import('./gl/movimento3d.js');
+      views.movimento = stage.add(new Movimento3DView(chapters.movimento.stage, stage, charData));
+      kt = (n) => views.movimento.keyTime(n);
+      retime();
+    } else {
+      const spin = assets.spin || (await import('./gl/polo.js')).loadSpins();
+      views.movimento = stage.add(new V.MovimentoView(chapters.movimento.stage, stage, await spin));
+    }
     views.movimento.setShirtColor(state.color);
     views.movimento.labels = labels;
     views.manifesto = stage.add(new V.ManifestoView(chapters.manifesto.stage, polos.manifesto, stage));
@@ -448,7 +460,7 @@ function frame(now) {
     if (on !== l.on) { l.on = on; l.el.classList.toggle('on', on); }
   }
   updateCaption(t, inMov);
-  if (inMov && mp > 0.45 && mp < 0.7) drawStretch(stretch, Math.sin(Math.PI * map01(t, keyTime('lunge'), keyTime('stand'))), time);
+  if (inMov && mp > 0.45 && mp < 0.7) drawStretch(stretch, Math.sin(Math.PI * map01(t, kt('lunge'), kt('relax'))), time);
 
   // 08
   if (views.manifesto) views.manifesto.progress = chapters.manifesto.p;

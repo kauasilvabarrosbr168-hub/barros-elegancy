@@ -41,6 +41,35 @@ npm run spin -- branca assets-src/giro-branca.mp4 48 --pular 175-185 --inverter
 
 Nos detalhes (zoom), o site continua usando o mockup 3/4, que é mais nítido que o vídeo.
 
+## Personagem 3D (capítulo "Movimento")
+
+O homem BARROS é o boneco **X Bot** do Mixamo vestindo uma **polo 3D presa ao esqueleto**, então manga, tronco e barra se mexem com o corpo. O corpo aparece em partículas.
+
+```bash
+npm run character   # gera public/models/barros-man.json + .bin
+```
+
+O script `scripts/prepare-character.mjs` faz o seguinte:
+
+- Lê o X Bot e as animações de `assets-src/mixamo/`.
+- Constrói a polo como uma casca contínua a 1,5 cm do corpo, com caimento reto a partir da axila, barra solta e gola.
+- Prende a polo aos mesmos ossos do boneco.
+- Gera os pontos das partículas e compacta as animações.
+
+A linha do tempo fica em `src/gl/movimento3d.js` (`TL`):
+
+- **Saque e forehand:** poses próprias (`src/pose.js`), convertidas para o esqueleto.
+- **Espera, corrida lateral, alongamento, caminhada, em pé, café, conversa e aperto de mão:** animações do Mixamo.
+
+Os detalhes da polo (logo no peito e nas costas, recorte em V, carcela e botões, etiqueta, cores) ficam em `src/gl/character.js`, função `makeShirtMaterial`.
+
+Para adicionar ou trocar uma animação do Mixamo:
+
+1. Use o personagem X Bot.
+2. Baixe com Format FBX Binary, Skin "Without Skin", 30 fps e "In Place" quando existir.
+3. Salve o arquivo em `assets-src/mixamo/`.
+4. Coloque o nome dele na `TL` e rode `npm run character`.
+
 ## Modelo 3D da polo (.glb), opcional
 
 Com os vídeos, o .glb deixou de ser necessário. Se um dia houver um modelo 3D real:

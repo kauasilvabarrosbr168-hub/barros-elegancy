@@ -18,7 +18,7 @@ export async function loadCharacterData(base = '/models/barros-man') {
 // Material da polo: tecido (sheen) + detalhes desenhados na pose de repouso
 // ------------------------------------------------------------
 const SHIRT_COLORS = {
-  preta: { body: 0x131315, collar: 0x131315, sheen: 0x5a5a5e, white: 0 },
+  preta: { body: 0x141416, collar: 0x141416, sheen: 0xa2a2a8, white: 0 },
   branca: { body: 0xefede7, collar: 0xc9a468, sheen: 0xffffff, white: 1 },
 };
 
@@ -125,7 +125,7 @@ void main() {
   gl_Position = projectionMatrix * mv;
   bool ring = aInfo.x > 0.5;
   vColor = ring ? vec3(0.86, 0.7, 0.44) : vec3(0.6, 0.62, 0.67);
-  vAlpha = (ring ? 0.8 : 0.5) * mix(0.3, 1.0, e);
+  vAlpha = (ring ? 0.85 : 0.72) * mix(0.3, 1.0, e);
   gl_PointSize = aInfo.w * uPix * (3.2 / -mv.z);
 }`;
 const P_FRAG = /* glsl */ `
@@ -419,7 +419,10 @@ export class Character {
     const u = this.shirtMat.userData.u;
     u.uBody.value.set(c.body); u.uCollar.value.set(c.collar); u.uWhite.value = c.white;
     this.shirtMat.sheenColor.set(c.sheen);
-    this.shirtMat.roughness = c.white ? 0.86 : 0.78;
+    // preta: brilho sutil só nas bordas (tecido escuro de verdade); branca: tecido claro e fosco
+    this.shirtMat.sheen = c.white ? 1 : 0.45;
+    this.shirtMat.roughness = c.white ? 0.86 : 0.7;
+    this.shirtMat.envMapIntensity = c.white ? 1 : 0.55;
   }
 
   setReveal(v) { this.shirtMat.userData.u.uReveal.value = v; this.shirt.visible = v > 0.001; }

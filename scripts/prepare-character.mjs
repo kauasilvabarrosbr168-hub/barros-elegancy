@@ -41,7 +41,7 @@ function fields(p) {
   const r = Math.hypot(p.x - NECK_C.x, p.z - NECK_C.y);
   const dz = (p.z - NECK_C.y) / Math.max(r, 1e-3);
   const neckLine = K.neck.y - 2.6 - 3.8 * Math.max(0, dz) + 0.6 * Math.max(0, -dz);
-  const fNeck = Math.max(r - 8.6, neckLine - p.y);
+  const fNeck = Math.max(neckLine - p.y, Math.min(r - 8.6, K.neck.y + 1.5 - p.y));
   const t = (Math.abs(p.x) - K.lArm.x) / ARM_LEN;
   return [p.y - HEM_CUT, fNeck, SLEEVE_T - t];
 }
@@ -87,11 +87,194 @@ function clipPoly(poly, k) {
   }
   return out;
 }
+// ---------- polo: casca contínua a 1,5 cm do corpo (campo de distância) ----------
+// O X Bot é segmentado (anéis das juntas em outra malha), então a camisa não pode
+// sair direto da pele: amostra pele + juntas, calcula a distância assinada numa grade
+// e extrai a superfície de nível +OFF (marching tetrahedra). Fica lisa, sem buracos,
+// e se une na axila como tecido de verdade.
+const OFF = 1.5;
+function surfaceSamples(g, count) {
+  const idx = g.index.array, P = g.attributes.position;
+  const areas = []; let total = 0;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let t = 0; t < idx.length; t += 3) {
+    a.fromBufferAttribute(P, idx[t]); b.fromBufferAttribute(P, idx[t + 1]); c.fromBufferAttribute(P, idx[t + 2]);
+    total += new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).length() / 2;
+    areas.push(total);
+  }
+  const out = [];
+  for (let s2 = 0; s2 < count; s2++) {
+    const r = Math.random() * total;
+    let lo = 0, hi = areas.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (areas[mid] < r) lo = mid + 1; else hi = mid; }
+    const t = lo * 3;
+    let u = Math.random(), v = Math.random();
+    if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    const va = readV(g, idx[t]), vb = readV(g, idx[t + 1]), vc = readV(g, idx[t + 2]);
+    const p = va.p.clone().multiplyScalar(1 - u - v).addScaledVector(vb.p, u).addScaledVector(vc.p, v);
+    const n = va.n.clone().multiplyScalar(1 - u - v).addScaledVector(vb.n, u).addScaledVector(vc.n, v).normalize();
+    const w = new Map();
+    for (const [vv, f] of [[va, 1 - u - v], [vb, u], [vc, v]]) for (const [k, x] of vv.w) w.set(k, (w.get(k) || 0) + x * f);
+    out.push({ p, n, w });
+  }
+  return out;
+}
+const S = [...surfaceSamples(body, 60000), ...surfaceSamples(jointsGeo, 16000)];
+const CELL = 2;
+const hash = new Map();
+const hkey = (x, y, z) => `${Math.floor(x / CELL)},${Math.floor(y / CELL)},${Math.floor(z / CELL)}`;
+for (const q of S) { const k = hkey(q.p.x, q.p.y, q.p.z); if (!hash.has(k)) hash.set(k, []); hash.get(k).push(q); }
+function nearby(p, R) {
+  const out = [];
+  const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), cz = Math.floor(p.z / CELL), rr = Math.ceil(R / CELL);
+  for (let i = -rr; i <= rr; i++) for (let j = -rr; j <= rr; j++) for (let k = -rr; k <= rr; k++) {
+    const l = hash.get(`${cx + i},${cy + j},${cz + k}`);
+    if (l) for (const q of l) out.push(q);
+  }
+  return out;
+}
+// grade só na região da camisa (tronco + começo dos braços)
+const H = 1.25, X0 = -32, X1 = 32, Y0 = HEM_CUT - 3, Y1 = K.neck.y + 5, Z0 = -22, Z1 = 20;
+const NX = Math.round((X1 - X0) / H) + 1, NY = Math.round((Y1 - Y0) / H) + 1, NZ = Math.round((Z1 - Z0) / H) + 1;
+const gi = (i, j, k) => (k * NY + j) * NX + i;
+const Fd = new Float32Array(NX * NY * NZ).fill(NaN);
+{
+  const p = new THREE.Vector3();
+  for (let k = 0; k < NZ; k++) for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    p.set(X0 + i * H, Y0 + j * H, Z0 + k * H);
+    let best = null, bd = 1e9;
+    for (const q of nearby(p, 4)) { const d = q.p.distanceToSquared(p); if (d < bd) { bd = d; best = q; } }
+    if (!best || bd > 16) continue;
+    const sign = best.n.dot(new THREE.Vector3().subVectors(p, best.p)) >= 0 ? 1 : -1;
+    Fd[gi(i, j, k)] = sign * Math.sqrt(bd) - OFF;
+  }
+  // longe da pele: dentro ou fora? inunda a partir das bordas da grade
+  const seen = new Uint8Array(Fd.length), queue = [];
+  const tryPush = (i, j, k) => {
+    if (i < 0 || j < 0 || k < 0 || i >= NX || j >= NY || k >= NZ) return;
+    const id = gi(i, j, k);
+    if (seen[id]) return;
+    const f = Fd[id];
+    if (!(Number.isNaN(f) || f > 0)) return;
+    seen[id] = 1; queue.push(id);
+  };
+  for (let k = 0; k < NZ; k++) for (let j = 0; j < NY; j++) { tryPush(0, j, k); tryPush(NX - 1, j, k); }
+  for (let k = 0; k < NZ; k++) for (let i = 0; i < NX; i++) { tryPush(i, 0, k); tryPush(i, NY - 1, k); }
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { tryPush(i, j, 0); tryPush(i, j, NZ - 1); }
+  while (queue.length) {
+    const id = queue.pop();
+    const i = id % NX, j = Math.floor(id / NX) % NY, k = Math.floor(id / (NX * NY));
+    tryPush(i + 1, j, k); tryPush(i - 1, j, k); tryPush(i, j + 1, k); tryPush(i, j - 1, k); tryPush(i, j, k + 1); tryPush(i, j, k - 1);
+  }
+  for (let id = 0; id < Fd.length; id++) if (Number.isNaN(Fd[id])) Fd[id] = seen[id] ? 4 : -4;
+  // caimento: da axila para baixo o tecido desce quase reto a partir do que está
+  // acima (não acompanha a cintura nem o vão abaixo do peitoral)
+  const ARMPIT = K.spine2.y + 1;
+  for (let k = 0; k < NZ; k++) for (let i = 0; i < NX; i++) {
+    for (let j = NY - 2; j >= 0; j--) {
+      if (Y0 + j * H > ARMPIT) continue;
+      const up = Fd[gi(i, j + 1, k)] + H * 0.1;
+      const id = gi(i, j, k);
+      if (up < Fd[id]) Fd[id] = up;
+    }
+  }
+}
+// marching tetrahedra
+const CORNER = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]];
+const TETS = [[0, 1, 2, 6], [0, 2, 3, 6], [0, 3, 7, 6], [0, 7, 4, 6], [0, 4, 5, 6], [0, 5, 1, 6]];
+const mcPos = [], mcIdx = [], edgeVert = new Map();
+const gpos = (id) => new THREE.Vector3(X0 + (id % NX) * H, Y0 + (Math.floor(id / NX) % NY) * H, Z0 + Math.floor(id / (NX * NY)) * H);
+function edgeVertex(a, b) {
+  const key = a < b ? a * 1e7 + b : b * 1e7 + a;
+  if (edgeVert.has(key)) return edgeVert.get(key);
+  const fa = Fd[a], fb = Fd[b], t = fa / (fa - fb);
+  const p = gpos(a).lerp(gpos(b), t);
+  mcPos.push(p);
+  edgeVert.set(key, mcPos.length - 1);
+  return mcPos.length - 1;
+}
+function emit(a, b, c, insideIds, outsideIds) {
+  // orienta para fora (do lado de dentro para o de fora)
+  const A = mcPos[a], B = mcPos[b], C = mcPos[c];
+  const n = new THREE.Vector3().subVectors(B, A).cross(new THREE.Vector3().subVectors(C, A));
+  const out = new THREE.Vector3();
+  for (const id of outsideIds) out.add(gpos(id));
+  out.multiplyScalar(1 / outsideIds.length);
+  const inn = new THREE.Vector3();
+  for (const id of insideIds) inn.add(gpos(id));
+  inn.multiplyScalar(1 / insideIds.length);
+  if (n.dot(out.sub(inn)) < 0) mcIdx.push(a, c, b); else mcIdx.push(a, b, c);
+}
+for (let k = 0; k < NZ - 1; k++) for (let j = 0; j < NY - 1; j++) for (let i = 0; i < NX - 1; i++) {
+  const ids = CORNER.map(([a, b, c]) => gi(i + a, j + b, k + c));
+  for (const tet of TETS) {
+    const v = tet.map((c) => ids[c]);
+    const ins = v.filter((id) => Fd[id] < 0), outs = v.filter((id) => Fd[id] >= 0);
+    if (ins.length === 0 || ins.length === 4) continue;
+    if (ins.length === 1 || ins.length === 3) {
+      const lone = ins.length === 1 ? ins[0] : outs[0];
+      const others = ins.length === 1 ? outs : ins;
+      emit(edgeVertex(lone, others[0]), edgeVertex(lone, others[1]), edgeVertex(lone, others[2]), ins, outs);
+    } else {
+      const [i0, i1] = ins, [o0, o1] = outs;
+      const a = edgeVertex(i0, o0), b = edgeVertex(i0, o1), c = edgeVertex(i1, o1), d = edgeVertex(i1, o0);
+      emit(a, b, c, ins, outs); emit(a, c, d, ins, outs);
+    }
+  }
+}
+// simplifica: junta vértices numa grade de ~1 cm (tira as lascas dos tetraedros)
+{
+  const C = 1.0, cells = new Map(), acc = [], remap = new Int32Array(mcPos.length);
+  mcPos.forEach((p, i) => {
+    const k = `${Math.floor(p.x / C)},${Math.floor(p.y / C)},${Math.floor(p.z / C)}`;
+    let id = cells.get(k);
+    if (id === undefined) { id = acc.length; cells.set(k, id); acc.push({ s: new THREE.Vector3(), n: 0 }); }
+    acc[id].s.add(p); acc[id].n++; remap[i] = id;
+  });
+  const seenTri = new Set(), idx = [];
+  for (let t = 0; t < mcIdx.length; t += 3) {
+    const a = remap[mcIdx[t]], b = remap[mcIdx[t + 1]], c = remap[mcIdx[t + 2]];
+    if (a === b || b === c || a === c) continue;
+    const key = [a, b, c].sort((x, y) => x - y).join('_');
+    if (seenTri.has(key)) continue;
+    seenTri.add(key); idx.push(a, b, c);
+  }
+  mcPos.length = 0;
+  for (const o of acc) mcPos.push(o.s.multiplyScalar(1 / o.n));
+  mcIdx.length = 0; mcIdx.push(...idx);
+}
+// suaviza (Laplace) para tirar o serrilhado da grade
+{
+  const nb = mcPos.map(() => new Set());
+  for (let t = 0; t < mcIdx.length; t += 3) for (let e = 0; e < 3; e++) { const a = mcIdx[t + e], b = mcIdx[t + ((e + 1) % 3)]; nb[a].add(b); nb[b].add(a); }
+  for (let it = 0; it < 4; it++) {
+    const next = mcPos.map((p, i) => {
+      if (!nb[i].size) return p.clone();
+      const avg = new THREE.Vector3();
+      for (const j of nb[i]) avg.add(mcPos[j]);
+      return p.clone().lerp(avg.multiplyScalar(1 / nb[i].size), 0.5);
+    });
+    next.forEach((p, i) => mcPos[i].copy(p));
+  }
+}
+// pesos: mistura dos pontos de pele mais próximos
+const mcW = mcPos.map((p) => {
+  const w = new Map();
+  let near = nearby(p, 4).map((q) => [q, q.p.distanceTo(p)]).sort((a, b) => a[1] - b[1]).slice(0, 8);
+  if (!near.length) near = [[S.reduce((b2, q) => (q.p.distanceTo(p) < b2.p.distanceTo(p) ? q : b2), S[0]), 1]];
+  for (const [q, d] of near) { const f = 1 / (d + 0.4); for (const [kk, x] of q.w) w.set(kk, (w.get(kk) || 0) + x * f); }
+  return w;
+});
+const mcGeo = new THREE.BufferGeometry();
+mcGeo.setAttribute('position', new THREE.Float32BufferAttribute(mcPos.flatMap((p) => [p.x, p.y, p.z]), 3));
+mcGeo.setIndex(mcIdx);
+mcGeo.computeVertexNormals();
 const tris = [];
 {
-  const idx = body.index.array;
-  for (let t = 0; t < idx.length; t += 3) {
-    let poly = [readV(body, idx[t]), readV(body, idx[t + 1]), readV(body, idx[t + 2])];
+  const N = mcGeo.attributes.normal;
+  const V = (i) => ({ p: mcPos[i].clone(), n: new THREE.Vector3().fromBufferAttribute(N, i), w: mcW[i] });
+  for (let t = 0; t < mcIdx.length; t += 3) {
+    let poly = [V(mcIdx[t]), V(mcIdx[t + 1]), V(mcIdx[t + 2])];
     for (let k = 0; k < 3 && poly.length >= 3; k++) poly = clipPoly(poly, k);
     for (let i = 1; i + 1 < poly.length; i++) tris.push([poly[0], poly[i], poly[i + 1]]);
   }
@@ -121,15 +304,15 @@ function toGeometry(list) {
 }
 const shirt = toGeometry(tris);
 
-// afrouxa: mais folga na cintura e nas mangas (tecido não é pele)
+// um pouco mais de folga na cintura e nas mangas
 {
   const P = shirt.attributes.position, N = shirt.attributes.normal;
   const chestY = K.spine2.y - 4;
   for (let i = 0; i < P.count; i++) {
     const p = new THREE.Vector3(P.getX(i), P.getY(i), P.getZ(i));
-    const waist = 1 - THREE.MathUtils.smoothstep(p.y, HEM_CUT, chestY); // 1 na barra, 0 no peito
+    const waist = 1 - THREE.MathUtils.smoothstep(p.y, HEM_CUT, chestY);
     const t = Math.max(0, (Math.abs(p.x) - K.lArm.x) / ARM_LEN);
-    const d = 0.9 + 1.5 * waist + 2.2 * THREE.MathUtils.smoothstep(t, 0.05, SLEEVE_T);
+    const d = 0.7 * waist + 0.9 * THREE.MathUtils.smoothstep(t, 0.05, SLEEVE_T);
     P.setXYZ(i, p.x + N.getX(i) * d, p.y + N.getY(i) * d, p.z + N.getZ(i) * d);
   }
   shirt.computeVertexNormals();
@@ -173,35 +356,67 @@ const radial = (p, cz) => new THREE.Vector3(p.x, 0, p.z - cz).normalize();
 for (const [a, b] of hemEdges) {
   const mk = (i) => once(`hem${i}`, () => {
     const p = vAt(shirt, i), r = radial(p, K.hips.z);
-    const mid = addVert(p.clone().add(new THREE.Vector3(0, -5.5, 0)).addScaledVector(r, 0.7), wAt(shirt, i), 0);
+    const mid = addVert(p.clone().add(new THREE.Vector3(0, -4.5, 0)).addScaledVector(r, 0.2), wAt(shirt, i), 0);
     // embaixo: 65% quadril + 35% coxa do lado
     const side = p.x > 2 ? 'l' : p.x < -2 ? 'r' : null;
     const w = side ? [[HIPS, 0.65], [UPLEG[side], 0.35], [0, 0], [0, 0]] : [[HIPS, 0.8], [UPLEG.l, 0.1], [UPLEG.r, 0.1], [0, 0]];
-    const bot = addVert(p.clone().add(new THREE.Vector3(0, -11, 0)).addScaledVector(r, 1.5), w, 0);
+    const bot = addVert(p.clone().add(new THREE.Vector3(0, -9, 0)).addScaledVector(r, 0.5), w, 0);
     return [mid, bot];
   });
   const [am, ab] = mk(a), [bm, bb] = mk(b);
   extra.idx.push(b, a, am, b, am, bm, bm, am, ab, bm, ab, bb);
 }
-// gola: pé da gola sobe 3 cm e a aba dobra para fora; abre na frente (carcela)
-for (const [a, b] of neckEdges) {
-  const pa = vAt(shirt, a), pb = vAt(shirt, b);
-  const front = (p) => {
-    const r = new THREE.Vector3(p.x, 0, p.z - NECK_C.y).normalize();
-    return Math.acos(Math.max(-1, Math.min(1, r.z))) * (180 / Math.PI);
-  };
-  if (front(pa) < 13 && front(pb) < 13) continue;
-  const mk = (i) => once(`col${i}`, () => {
-    const p = vAt(shirt, i), r = radial(p, NECK_C.y);
-    const ang = front(p);
-    const tip = THREE.MathUtils.smoothstep(40 - ang, 0, 27); // pontas da gola na frente
-    const T = addVert(p.clone().add(new THREE.Vector3(0, 3.1 - 1.2 * tip, 0)).addScaledVector(r, 0.35), wAt(shirt, i), 1);
-    const F = addVert(p.clone().add(new THREE.Vector3(0, -0.6 - 2.4 * tip, 0)).addScaledVector(r, 3.1 + 1.2 * tip), wAt(shirt, i), 1);
-    const base = addVert(p.clone(), wAt(shirt, i), 1);
-    return [base, T, F];
+// gola: contorno do pescoço ordenado, reamostrado e suavizado; pé sobe e a aba
+// dobra para fora; abre na frente (carcela), com pontas
+{
+  const next = new Map();
+  for (const [a, b] of neckEdges) next.set(a, b);
+  // maior laço fechado
+  let loop = [];
+  const used = new Set();
+  for (const start of next.keys()) {
+    if (used.has(start)) continue;
+    const l = [];
+    let cur = start, guard = 0;
+    while (cur !== undefined && !used.has(cur) && guard++ < 5000) { used.add(cur); l.push(cur); cur = next.get(cur); }
+    if (l.length > loop.length) loop = l;
+  }
+  const pts = loop.map((i) => vAt(shirt, i));
+  // ângulo em volta do pescoço (0 = frente) e ordenação por ângulo
+  const angOf = (p) => Math.atan2(p.x, p.z - NECK_C.y);
+  const order = pts.map((p, k) => [angOf(p), k]).sort((a, b) => a[0] - b[0]);
+  const M = 72, OPEN = 14 * (Math.PI / 180);
+  const samples = [];
+  for (let m = 0; m <= M; m++) {
+    // de +OPEN (lado esquerdo da frente) passando pelas costas até -OPEN
+    const a = OPEN + (m / M) * (2 * Math.PI - 2 * OPEN);
+    const ang = a > Math.PI ? a - 2 * Math.PI : a;
+    // ponto do contorno mais próximo nesse ângulo (média dos 3 vizinhos)
+    let best = 0, bd = 1e9;
+    order.forEach(([oa], k) => { const d = Math.abs(Math.atan2(Math.sin(oa - ang), Math.cos(oa - ang))); if (d < bd) { bd = d; best = k; } });
+    const avg = new THREE.Vector3();
+    for (let o = -2; o <= 2; o++) avg.add(pts[order[(best + o + order.length) % order.length][1]]);
+    avg.multiplyScalar(1 / 5);
+    samples.push({ p: avg, w: wAt(shirt, loop[order[best][1]]), ang });
+  }
+  // suaviza a altura/raio ao longo da gola
+  for (let it = 0; it < 3; it++) {
+    const cp = samples.map((s) => s.p.clone());
+    for (let m = 1; m < samples.length - 1; m++) samples[m].p.copy(cp[m - 1]).add(cp[m]).add(cp[m + 1]).multiplyScalar(1 / 3);
+  }
+  const rows = samples.map((s) => {
+    const r = new THREE.Vector3(s.p.x, 0, s.p.z - NECK_C.y).normalize();
+    const front = Math.abs(s.ang) * (180 / Math.PI); // 14 (ponta) .. 180 (nuca)
+    const tip = 1 - THREE.MathUtils.smoothstep(front, 14, 50); // 1 nas pontas da frente
+    const base = s.p.clone().add(new THREE.Vector3(0, -0.2, 0));
+    const T = s.p.clone().add(new THREE.Vector3(0, 2.4 - 0.8 * tip, 0)).addScaledVector(r, 0.25);
+    const F = T.clone().add(new THREE.Vector3(0, -2.9 - 1.6 * tip, 0)).addScaledVector(r, 1.5 + 0.7 * tip);
+    return [addVert(base, s.w, 1), addVert(T, s.w, 1), addVert(F, s.w, 1)];
   });
-  const [a0, aT, aF] = mk(a), [b0, bT, bF] = mk(b);
-  extra.idx.push(b0, a0, aT, b0, aT, bT, bT, aT, aF, bT, aF, bF);
+  for (let m = 0; m < rows.length - 1; m++) {
+    const [a0, aT, aF] = rows[m], [b0, bT, bF] = rows[m + 1];
+    extra.idx.push(a0, b0, bT, a0, bT, aT, aT, bT, bF, aT, bF, aF);
+  }
 }
 
 // junta tudo numa malha só (part: 0 tecido, 1 gola)
@@ -212,13 +427,13 @@ shirtPos.set(P0); shirtPos.set(extra.pos, baseCount * 3);
 for (let i = 0; i < baseCount * 4; i++) { shirtSI[i] = SI0[i]; shirtSW[i] = Math.round(SW0[i] * 255); }
 for (let i = 0; i < extra.si.length; i++) { shirtSI[baseCount * 4 + i] = extra.si[i]; shirtSW[baseCount * 4 + i] = Math.round(extra.sw[i] * 255); }
 shirtPart.set(extra.part, baseCount);
-const shirtIdx = new Uint32Array([...shirt.index.array, ...extra.idx]);
+const shirtIdx = (nV < 65536 ? Uint16Array : Uint32Array).from([...shirt.index.array, ...extra.idx]);
 
 // ---------- corpo para profundidade (sem normais) ----------
 const bodyPos = new Float32Array(body.attributes.position.array);
 const bodySI = Uint8Array.from(body.attributes.skinIndex.array);
 const bodySW = Uint8Array.from(body.attributes.skinWeight.array, (v) => Math.round(v * 255));
-const bodyIdx = new Uint32Array(body.index.array);
+const bodyIdx = (body.attributes.position.count < 65536 ? Uint16Array : Uint32Array).from(body.index.array);
 
 // ---------- partículas sobre a pele (fora da camisa) ----------
 function sample(g, count, kind) {
@@ -314,7 +529,7 @@ const meta = {
     position: put(shirtPos), skinIndex: put(shirtSI), skinWeight: put(shirtSW), part: put(shirtPart), index: put(shirtIdx),
     // referências para os detalhes (em cm, na pose de repouso)
     ref: {
-      hemCut: HEM_CUT, hemBottom: HEM_CUT - 11, neckY: K.neck.y, neckZ: NECK_C.y, chestY: K.spine2.y,
+      hemCut: HEM_CUT, hemBottom: HEM_CUT - 9, neckY: K.neck.y, neckZ: NECK_C.y, chestY: K.spine2.y,
       shoulderX: K.lArm.x, frontZ: K.spine2.z,
     },
   },
