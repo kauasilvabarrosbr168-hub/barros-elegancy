@@ -1,0 +1,4 @@
+Coloque aqui o modelo 3D da polo:
+  - polo.glb                (um arquivo; o site recolore preta/branca)
+  - ou polo-preta.glb + polo-branca.glb
+Detalhes no README.md do projeto.

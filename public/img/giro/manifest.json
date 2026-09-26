@@ -1,0 +1,12 @@
+{
+  "preta": {
+    "frames": 48,
+    "width": 525,
+    "height": 665
+  },
+  "branca": {
+    "frames": 48,
+    "width": 505,
+    "height": 632
+  }
+}

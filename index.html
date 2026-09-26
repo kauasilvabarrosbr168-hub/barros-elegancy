@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>BARROS — Elegância em Movimento</title>
+  <meta name="description" content="BARROS: moda masculina que une performance, conforto e sofisticação. Polo de performance — do esporte aos negócios." />
+  <meta name="theme-color" content="#000000" />
+  <meta property="og:title" content="BARROS — Elegância em Movimento" />
+  <meta property="og:description" content="Do esporte aos negócios. Primeiro drop da Polo BARROS." />
+  <meta property="og:image" content="/img/polo-preta-34.png" />
+  <link rel="icon" type="image/png" href="/img/logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,200..800&family=Manrope:wght@300..700&display=swap" rel="stylesheet" />
+  <link rel="preload" as="image" href="/img/logo.png" />
+</head>
+<body>
+  <canvas id="gl" aria-hidden="true"></canvas>
+
+  <header class="topbar" id="topbar">
+    <a class="topbar-brand" href="#abertura" aria-label="BARROS — início">
+      <img src="/img/logo.png" alt="" width="28" height="26" />
+      <span>BARROS</span>
+    </a>
+    <nav class="topbar-nav" aria-label="Seções">
+      <a href="#peca">A peça</a>
+      <a href="#movimento">Movimento</a>
+      <a href="#manifesto">Manifesto</a>
+    </nav>
+    <a class="btn btn-gold btn-sm" href="#reserva">Reservar</a>
+  </header>
+
+  <main>
+    <!-- 01 — ABERTURA -->
+    <section id="abertura" class="chapter" data-chapter="hero" style="--h: 170">
+      <div class="stage">
+        <div class="hero">
+          <div class="hero-logo" aria-hidden="true">
+            <img class="hero-logo-base" src="/img/logo.png" alt="" />
+            <img class="hero-logo-sheen" src="/img/logo.png" alt="" />
+          </div>
+          <h1 class="hero-title">
+            <span class="sr-only">BARROS — </span>
+            <span class="hero-line hero-line-1">Elegância em movimento.</span>
+            <span class="hero-line hero-line-2">Do esporte aos negócios.</span>
+          </h1>
+        </div>
+        <a class="scroll-cue" href="#peca" aria-label="Role para descobrir">
+          <span class="scroll-cue-track"><span class="scroll-cue-dot"></span></span>
+          <svg class="scroll-cue-arrow" viewBox="0 0 24 14" aria-hidden="true"><path d="M1 1l11 11L23 1" /></svg>
+          <span class="scroll-cue-label">Role para descobrir</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- 02 · 03 · 04 — O TECIDO, A PEÇA, OS DETALHES -->
+    <section id="peca" class="chapter" data-chapter="peca" style="--h: 1000" aria-label="A peça">
+      <div class="stage">
+        <div class="fb-fabric" aria-hidden="true"><span class="fb-fabric-a"></span><span class="fb-fabric-b"></span></div>
+        <div class="fb-polo" aria-hidden="true"><img alt="" /></div>
+
+        <p class="chapter-tag beat" data-range="0 0.2">01 — O tecido</p>
+
+        <div class="reveal-caption beat" data-range="0.24 0.33">
+          <p class="eyebrow">Polo de performance</p>
+          <h2 class="display-md">Polo BARROS</h2>
+        </div>
+
+        <!-- 03 — produto interativo -->
+        <div class="viewer-ui beat" data-range="0.33 0.46" id="pecaViewer">
+          <button class="nav-arrow nav-prev" type="button" aria-label="Cor anterior">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4l-8 8 8 8" /></svg>
+          </button>
+          <button class="nav-arrow nav-next" type="button" aria-label="Próxima cor">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l8 8-8 8" /></svg>
+          </button>
+          <div class="viewer-foot">
+            <div class="rot-indicator" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <circle class="rot-ring" cx="32" cy="32" r="28" />
+                <circle class="rot-arc" cx="32" cy="32" r="28" />
+                <path class="rot-hand" d="M26 38v-9a2 2 0 014 0v5m0-2v-3a2 2 0 014 0v4m0-2a2 2 0 014 0v4c0 4-3 7-7 7h-1c-3 0-5-2-6-4l-3-5a2 2 0 013-2l2 2" />
+              </svg>
+              <span>360°</span>
+            </div>
+            <p class="viewer-name"><span>POLO BARROS</span> — <strong data-color-name>PRETA</strong></p>
+            <p class="viewer-hint">Arraste para girar</p>
+          </div>
+        </div>
+        <div class="drag-surface" data-drag="peca" data-range="0.33 0.46"></div>
+
+        <!-- 04 — detalhes -->
+        <div class="hotspots" id="pecaHotspots" data-range="0.44 1"></div>
+        <div class="detail-panels" id="pecaDetails"></div>
+        <p class="chapter-tag beat" data-range="0.46 1">02 — Os detalhes</p>
+      </div>
+    </section>
+
+    <!-- 05 · 06 · 07 — PERFORMANCE, CONFORTO, NEGÓCIOS -->
+    <section id="movimento" class="chapter" data-chapter="movimento" style="--h: 1500" aria-label="Movimento">
+      <div class="stage">
+        <svg class="fb-figure" id="fbFigure" viewBox="-160 -250 320 270" aria-hidden="true"></svg>
+        <p class="chapter-tag beat" data-range="0.02 0.47">03 — Performance</p>
+        <div class="float-labels" id="floatLabels"></div>
+
+        <div class="panel panel-left beat" data-range="0.5 0.68">
+          <p class="eyebrow">Conforto em movimento</p>
+          <h2 class="display-md">Feita para se movimentar com você.</h2>
+          <p class="lede">Do primeiro movimento ao último ponto.</p>
+          <ul class="bullets">
+            <li>Alta elasticidade</li>
+            <li>Tecido leve</li>
+            <li>Liberdade de movimento</li>
+            <li>Conforto prolongado</li>
+            <li>Secagem rápida</li>
+          </ul>
+          <svg class="stretch" id="stretch" viewBox="0 0 240 90" aria-hidden="true"></svg>
+        </div>
+
+        <div class="panel panel-left beat" data-range="0.71 0.84">
+          <p class="eyebrow">Do esporte aos negócios</p>
+          <h2 class="display-md">Uma peça.<br />Diferentes momentos.</h2>
+        </div>
+        <div class="panel panel-left beat" data-range="0.84 1">
+          <h2 class="display-md">Do esporte<br />aos negócios.</h2>
+          <ul class="bullets">
+            <li>Design sofisticado</li>
+            <li>Performance sem aparência de uniforme</li>
+            <li>Conforto durante todo o dia</li>
+            <li>Versatilidade</li>
+            <li>Identidade masculina</li>
+            <li>Presença</li>
+          </ul>
+        </div>
+        <p class="scene-caption" id="sceneCaption" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- 08 — MANIFESTO -->
+    <section id="manifesto" class="chapter" data-chapter="manifesto" style="--h: 520" aria-label="Por que a BARROS criou essa peça">
+      <div class="stage">
+        <div class="fb-polo fb-polo-dim" aria-hidden="true"><img alt="" /></div>
+        <div class="manifesto">
+          <h2 class="display-lg beat m-beat" data-range="0.1 0.3">O homem mudou.<br /><span class="gold">A roupa também precisa mudar.</span></h2>
+          <p class="display-sm beat m-beat" data-range="0.32 0.46">A BARROS nasceu para o homem que não vive em apenas um ambiente.</p>
+          <p class="verbs beat m-beat" data-range="0.48 0.68">
+            <span>Ele treina.</span><span>Joga.</span><span>Trabalha.</span><span>Viaja.</span><span>Faz negócios.</span><span>Encontra pessoas.</span><span class="gold">E continua o dia.</span>
+          </p>
+          <p class="display-sm beat m-beat" data-range="0.7 0.82">A BARROS foi criada para acompanhar esse movimento.</p>
+          <ul class="pillars beat m-beat" data-range="0.84 1">
+            <li>Performance</li><li>Conforto</li><li>Sofisticação</li><li>Versatilidade</li><li>Presença</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 09 — PARA QUEM É -->
+    <section id="para-quem" class="chapter" data-chapter="paraquem" style="--h: 560" aria-label="Para quem é a BARROS">
+      <div class="stage">
+        <div class="pq-head beat" data-range="0 0.86">
+          <p class="eyebrow">Para quem é a BARROS</p>
+          <h2 class="display-md">Para o homem que não quer escolher entre performance e elegância.</h2>
+        </div>
+        <div class="pq-track" id="pqTrack"></div>
+        <div class="pq-close beat" data-range="0.84 1">
+          <p><span>Treine com ela.</span><span>Trabalhe com ela.</span><span>Viaje com ela.</span><span class="gold">Viva com ela.</span></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 — RESERVA -->
+    <section id="reserva" class="reserva" aria-label="Reserve a sua">
+      <div class="res-grid">
+        <div class="res-viewer" id="resViewer">
+          <div class="fb-polo" aria-hidden="true"><img alt="" /></div>
+          <div class="drag-surface" data-drag="reserva"></div>
+          <div class="hotspots" id="resHotspots"></div>
+          <button class="nav-arrow nav-prev" type="button" aria-label="Cor anterior">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4l-8 8 8 8" /></svg>
+          </button>
+          <button class="nav-arrow nav-next" type="button" aria-label="Próxima cor">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l8 8-8 8" /></svg>
+          </button>
+          <div class="rot-indicator res-rot" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <circle class="rot-ring" cx="32" cy="32" r="28" />
+              <circle class="rot-arc" cx="32" cy="32" r="28" />
+              <path class="rot-hand" d="M26 38v-9a2 2 0 014 0v5m0-2v-3a2 2 0 014 0v4m0-2a2 2 0 014 0v4c0 4-3 7-7 7h-1c-3 0-5-2-6-4l-3-5a2 2 0 013-2l2 2" />
+            </svg>
+            <span>360°</span>
+          </div>
+          <div class="hotspot-pop" id="resPop" hidden></div>
+        </div>
+
+        <form class="res-panel" id="resForm" novalidate>
+          <p class="eyebrow eyebrow-drop"><span class="drop-dot"></span>Primeiro drop</p>
+          <h2 class="display-lg">Polo BARROS</h2>
+          <p class="res-sub">Performance masculina. Do esporte aos negócios.</p>
+
+          <fieldset class="opt">
+            <legend>Cor <strong data-color-name>Preta</strong></legend>
+            <div class="swatches" id="swatches"></div>
+          </fieldset>
+
+          <fieldset class="opt">
+            <legend>Tamanho <strong id="sizeName">—</strong></legend>
+            <div class="sizes" id="sizes"></div>
+          </fieldset>
+
+          <button class="btn btn-gold btn-lg" type="submit" id="reserveBtn">Reserve a sua</button>
+          <p class="res-note" id="resNote" aria-live="polite"></p>
+
+          <button class="btn-link" type="button" id="toggleDetails" aria-expanded="false">
+            <span class="plus" aria-hidden="true"></span> Visualizar detalhes
+          </button>
+          <ul class="res-specs">
+            <li>Tecido tecnológico leve</li>
+            <li>Alta elasticidade</li>
+            <li>Secagem rápida</li>
+            <li>Recorte em V exclusivo</li>
+          </ul>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <img src="/img/logo.png" alt="" width="40" height="37" />
+    <p class="footer-brand">BARROS</p>
+    <p class="footer-tag">Elegância em movimento.</p>
+    <p class="footer-copy">© <span id="year"></span> BARROS. Moda masculina brasileira.</p>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
