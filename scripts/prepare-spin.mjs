@@ -347,6 +347,7 @@ for (let k = 0; k < frames.length; k++) {
 }
 const manifestPath = 'public/img/giro/manifest.json';
 const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};
-manifest[cor] = { frames: N, width: cw, height: ch };
+// axisX: posição (0–1) do eixo de giro (centro da gola) na largura do quadro
+manifest[cor] = { frames: N, width: cw, height: ch, axisX: +((ref - cx0) / cw).toFixed(4) };
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 console.log(`✓ ${N} quadros ${cw}x${ch} em ${out} (${Math.round(bytes / 1024)} KB no total)`);

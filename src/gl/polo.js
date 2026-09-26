@@ -73,7 +73,7 @@ export async function loadSpins() {
     for (let k = 0; k < info.frames; k++) (k % 6 === 0 ? first : rest).push(k);
     await Promise.all(first.map(load));
     Promise.all(rest.map(load));
-    spin[cor] = { frames, width: info.width, height: info.height };
+    spin[cor] = { frames, width: info.width, height: info.height, axisX: info.axisX ?? 0.5 };
   }
   return spin;
 }

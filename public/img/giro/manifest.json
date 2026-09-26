@@ -2,11 +2,13 @@
   "preta": {
     "frames": 48,
     "width": 525,
-    "height": 665
+    "height": 665,
+    "axisX": 0.4949
   },
   "branca": {
     "frames": 48,
     "width": 504,
-    "height": 632
+    "height": 632,
+    "axisX": 0.5004
   }
 }

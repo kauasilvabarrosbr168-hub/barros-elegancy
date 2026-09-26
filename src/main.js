@@ -78,6 +78,7 @@ function setColor(id, instant = false) {
   for (const f of Object.values(fallback)) f && f.setColor(id);
   for (const el of $$('[data-color-name]')) el.textContent = colorName(id);
   for (const r of $$('input[name="cor"]')) r.checked = r.value === id;
+  views.movimento?.setShirtColor(id);
 }
 function stepColor(dir) {
   const ids = CONFIG.cores.map((c) => c.id);
@@ -383,7 +384,10 @@ async function setupGL() {
     polos.reserva.angle = 40;
     views.peca = stage.add(new V.PecaView(chapters.peca.stage, polos.peca, stage));
     views.peca.markers = pecaMarkers;
-    views.movimento = stage.add(new V.MovimentoView(chapters.movimento.stage, stage));
+    // a camisa real do personagem usa as fotos do giro 360°
+    const spin = assets.spin || (await import('./gl/polo.js')).loadSpins();
+    views.movimento = stage.add(new V.MovimentoView(chapters.movimento.stage, stage, await spin));
+    views.movimento.setShirtColor(state.color);
     views.movimento.labels = labels;
     views.manifesto = stage.add(new V.ManifestoView(chapters.manifesto.stage, polos.manifesto, stage));
     views.reserva = stage.add(new V.ReservaView($('#resViewer'), polos.reserva, stage));

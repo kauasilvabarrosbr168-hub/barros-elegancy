@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Fabric, makeLimbo } from './fabric.js';
 import { POLO_H } from './polo.js';
-import { Athlete } from './athlete.js';
+import { Athlete, ShirtCard } from './athlete.js';
 import { makeWorld, makeBall } from './world.js';
 import { J, POSES, keyTime, sampleSequence, solve } from '../pose.js';
 import { HOTSPOTS } from '../config.js';
@@ -190,8 +190,10 @@ export const MOV = {
 };
 export function seqAt(p) { return map01(p, MOV.seqA, MOV.seqB); }
 
+const SLEEVE = { preta: new THREE.Color(0.3, 0.3, 0.32), branca: new THREE.Color(0.96, 0.94, 0.89) };
+
 export class MovimentoView {
-  constructor(el, stage) {
+  constructor(el, stage, spin) {
     this.el = el;
     this.stage = stage;
     this.scene = new THREE.Scene();
@@ -204,7 +206,8 @@ export class MovimentoView {
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
     this.glow.rotation.x = -Math.PI / 2;
-    this.scene.add(this.world.object, this.glow, this.athlete.points, this.ball.object);
+    this.shirt = new ShirtCard(spin);
+    this.scene.add(this.world.object, this.glow, this.shirt.group, this.athlete.points, this.ball.object);
     this.progress = 0;
     this.t = 0;
     this.pose = {};
@@ -223,6 +226,11 @@ export class MovimentoView {
     this.apex = new THREE.Vector3(jt[J.lSh * 3] - 0.05, 2.95, jt[J.lSh * 3 + 2] + 0.12);
     this.hitServe = ringAt('contact');
     this.hitFore = ringAt('forehand');
+  }
+
+  setShirtColor(id) {
+    this.shirt.color = id;
+    this.athlete.uniforms.uSleeve.value.copy(SLEEVE[id] || SLEEVE.branca);
   }
 
   ballAt(t, out) {
@@ -297,6 +305,11 @@ export class MovimentoView {
     const cam = this.camera;
     cam.position.set(this.target.x + Math.sin(az) * dist, c.h + (narrow ? 0.1 : 0), this.target.z + Math.cos(az) * dist);
     cam.lookAt(this.target);
+
+    // camisa real no tronco (aparece quando o corpo termina de se formar)
+    const shirtOn = this.shirt.available ? smooth(map01(u.uAssemble.value, 0.72, 1)) : 0;
+    u.uRealShirt.value = shirtOn;
+    this.shirt.update(joints, u.uFwd.value, cam.position, shirtOn);
 
     this.glow.position.set(px, 0.005, pz);
     this.glow.material.uniforms.uOpacity.value = 0.55 * u.uAssemble.value;

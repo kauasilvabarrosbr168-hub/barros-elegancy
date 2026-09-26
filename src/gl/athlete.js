@@ -9,8 +9,10 @@ uniform vec3 uJ[${JOINT_COUNT}];
 uniform vec3 uJL[${JOINT_COUNT}];
 uniform vec3 uFwd;
 uniform vec3 uCenter;
-uniform float uAssemble, uTime, uPix, uRacket;
+uniform float uAssemble, uTime, uPix, uRacket, uRealShirt;
+uniform vec3 uSleeve;
 attribute vec2 aBone;
+attribute float aTorso; // 1 = tronco (some quando a camisa real está no corpo)
 attribute vec4 aShape; // t, ângulo, raio, achatamento
 attribute vec4 aInfo;  // tipo, rnd, rnd2, tamanho
 varying float vAlpha;
@@ -69,12 +71,15 @@ void main() {
   vec3 cGold = vec3(0.98, 0.8, 0.48);
   float a;
   if (kind < 0.5 || kind > 3.5) { vColor = cBody; a = 0.42; }
-  else if (kind < 1.5) { vColor = mix(cShirt, cGold, speed * 0.35); a = 0.62 + speed * 0.3; }
+  else if (kind < 1.5) { vColor = mix(mix(cShirt, uSleeve, uRealShirt), cGold, speed * 0.35); a = mix(0.62, 0.95, uRealShirt) + speed * 0.3; }
   else if (kind < 2.5) { vColor = cGold; a = 0.95; }
   else { vColor = cGold * 0.85; a = (aShape.w > 0.5 ? 0.75 : 0.9) * (aShape.w > 1.5 ? 0.25 : 1.0) * uRacket; }
   a *= mix(0.3, 1.0, e);
+  // com a camisa real: tronco e detalhes de partícula somem (a foto assume)
+  a *= 1.0 - uRealShirt * aTorso;
   vAlpha = a;
-  gl_PointSize = aInfo.w * uPix * (1.0 + speed * 0.35) * (3.2 / -mv.z);
+  float sleeveBoost = (kind > 0.5 && kind < 1.5) ? 1.0 + 0.35 * uRealShirt : 1.0;
+  gl_PointSize = aInfo.w * uPix * (1.0 + speed * 0.35) * sleeveBoost * (3.2 / -mv.z);
 }`;
 
 const FRAG = /* glsl */ `
@@ -111,12 +116,15 @@ function buildParticles(N) {
   ];
   const nAccent = Math.round(N * 0.06), nRacket = Math.round(N * 0.05), nHead = Math.round(N * 0.06);
   const nBody = N - nAccent - nRacket - nHead;
-  const weights = bones.map(([a, b, ra, rb, f]) => L(a, b) * (ra + rb) * (1 + f) * (a === J.pelvis || a === J.chest ? 1.5 : 1));
+  const weights = bones.map(([a, b, ra, rb, f, , sleeve]) => L(a, b) * (ra + rb) * (1 + f) * (a === J.pelvis || a === J.chest ? 1.5 : sleeve ? 1.7 : 1));
   const wsum = weights.reduce((s, w) => s + w, 0);
 
-  const bone = [], shape = [], info = [];
+  const bone = [], shape = [], info = [], torso = [];
+  const isTorso = (a, b) => (a === J.pelvis && b === J.chest) || (a === J.chest && b === J.neck) || (a === J.lSh && b === J.rSh) || (a === J.lHip && b === J.rHip);
   const push = (a, b, t, ang, r, f, kind, size) => {
     bone.push(a, b); shape.push(t, ang, r, f); info.push(kind, Math.random(), Math.random(), size);
+    // tronco + barra dourada das mangas (a camisa real já tem a manga)
+    torso.push(isTorso(a, b) || (kind === ACCENT && t === 0.52) ? 1 : 0);
   };
   bones.forEach(([a, b, ra, rb, f, kind, sleeve], i) => {
     const n = Math.round((weights[i] / wsum) * nBody);
@@ -168,6 +176,7 @@ function buildParticles(N) {
   g.setAttribute('aBone', new THREE.Float32BufferAttribute(bone, 2));
   g.setAttribute('aShape', new THREE.Float32BufferAttribute(shape, 4));
   g.setAttribute('aInfo', new THREE.Float32BufferAttribute(info, 4));
+  g.setAttribute('aTorso', new THREE.Float32BufferAttribute(torso, 1));
   return g;
 }
 
@@ -181,6 +190,7 @@ export class Athlete {
       uFwd: { value: new THREE.Vector3(0, 0, 1) }, uCenter: { value: new THREE.Vector3(0, 0, 0) },
       uAssemble: { value: 0 }, uTime: { value: 0 }, uPix: { value: Math.min(window.devicePixelRatio || 1, 2) },
       uRacket: { value: 1 }, uOpacity: { value: 1 },
+      uRealShirt: { value: 0 }, uSleeve: { value: new THREE.Color(0.96, 0.94, 0.89) },
     };
     const m = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms,
@@ -209,4 +219,115 @@ export class Athlete {
   }
 
   joint(i, out) { return out.set(this.joints[i * 3], this.joints[i * 3 + 1], this.joints[i * 3 + 2]); }
+}
+
+// ------------------------------------------------------------
+// Camisa real no tronco: fotos do giro 360° escolhidas pelo ângulo do tronco
+// em relação à câmera, alinhadas ao eixo pescoço→quadril. As mangas da foto
+// são recortadas (as de partícula acompanham os braços). Um passe só de
+// profundidade faz o tronco esconder o braço que passa por trás.
+// ------------------------------------------------------------
+const CARD_VERT = /* glsl */ `
+varying vec2 vUv;
+void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const CARD_FRAG = /* glsl */ `
+uniform sampler2D mapA, mapB;
+uniform float uMix, uOpacity, uKeep, uAxis, uDepthPass;
+varying vec2 vUv;
+void main() {
+  vec4 t = mix(texture2D(mapA, vUv), texture2D(mapB, vUv), uMix);
+  float dx = abs(vUv.x - uAxis);
+  // perto da gola a largura é menor; no corpo, corta o que passa dos ombros
+  float keep = 1.0 - smoothstep(uKeep - 0.045, uKeep + 0.015, dx);
+  float a = t.a * keep * uOpacity;
+  if (uDepthPass > 0.5) { if (a < 0.6) discard; gl_FragColor = vec4(0.0); return; }
+  // leve realce para a peça escura não sumir no fundo preto
+  vec3 col = t.rgb * 1.12 + vec3(0.012);
+  gl_FragColor = vec4(col, a);
+}`;
+
+export class ShirtCard {
+  constructor(spin) {
+    this.spin = spin || {};
+    this.color = 'preta';
+    this.group = new THREE.Group();
+    this.tex = [new THREE.Texture(), new THREE.Texture()];
+    for (const t of this.tex) { t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; }
+    const uniforms = {
+      mapA: { value: this.tex[0] }, mapB: { value: this.tex[1] }, uMix: { value: 0 },
+      uOpacity: { value: 0 }, uKeep: { value: 0.3 }, uAxis: { value: 0.5 }, uDepthPass: { value: 0 },
+    };
+    const geo = new THREE.PlaneGeometry(1, 1);
+    this.colorMat = new THREE.ShaderMaterial({ vertexShader: CARD_VERT, fragmentShader: CARD_FRAG, uniforms, transparent: true, depthWrite: false });
+    this.depthMat = new THREE.ShaderMaterial({
+      vertexShader: CARD_VERT, fragmentShader: CARD_FRAG,
+      uniforms: { ...uniforms, uDepthPass: { value: 1 } }, colorWrite: false, depthWrite: true,
+    });
+    this.depthMesh = new THREE.Mesh(geo, this.depthMat);
+    this.colorMesh = new THREE.Mesh(geo, this.colorMat);
+    this.depthMesh.renderOrder = -2;
+    this.colorMesh.renderOrder = -1;
+    for (const m of [this.depthMesh, this.colorMesh]) { m.matrixAutoUpdate = false; m.frustumCulled = false; }
+    this.group.add(this.depthMesh, this.colorMesh);
+    this._v = { up: new THREE.Vector3(), c: new THREE.Vector3(), r: new THREE.Vector3(), n: new THREE.Vector3(), p: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3() };
+    this.m = new THREE.Matrix4();
+  }
+
+  get available() { return !!this.spin[this.color]; }
+
+  // joints: Float32Array das juntas; fwd: frente do tronco; camPos: posição da câmera
+  update(joints, fwd, camPos, opacity) {
+    const s = this.spin[this.color];
+    const vis = !!s && opacity > 0.003;
+    this.group.visible = vis;
+    if (!vis) return;
+    const v = this._v;
+    const P = (i, out) => out.set(joints[i * 3], joints[i * 3 + 1], joints[i * 3 + 2]);
+    const pel = P(J.pelvis, v.a), neck = P(J.neck, v.b);
+    v.up.subVectors(neck, pel).normalize();
+    const top = neck.clone().addScaledVector(v.up, 0.05);
+    const hem = pel.clone().addScaledVector(v.up, -0.13);
+    const L = top.distanceTo(hem);
+    const H = L * (s.height / (s.height - 16));
+    const W = H * (s.width / s.height);
+    const center = v.p.addVectors(top, hem).multiplyScalar(0.5);
+
+    // ângulo do tronco visto da câmera (mesma convenção do giro)
+    v.c.subVectors(camPos, center); v.c.y = 0; v.c.normalize();
+    const viewRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), v.c);
+    const f = fwd;
+    let theta = Math.atan2(f.dot(viewRight), f.dot(v.c)) * (180 / Math.PI);
+    theta = ((theta % 360) + 360) % 360;
+
+    // cartão virado para a câmera, girando em torno do eixo do tronco
+    const toCam = new THREE.Vector3().subVectors(camPos, center).normalize();
+    v.r.crossVectors(v.up, toCam).normalize();
+    v.n.crossVectors(v.r, v.up).normalize();
+    // desloca para o eixo (centro da gola) cair sobre o eixo do tronco
+    center.addScaledVector(v.r, (0.5 - s.axisX) * W);
+    this.m.makeBasis(v.r.clone().multiplyScalar(W), v.up.clone().multiplyScalar(H), v.n).setPosition(center);
+    this.depthMesh.matrix.copy(this.m);
+    this.colorMesh.matrix.copy(this.m);
+
+    // quadro do giro (troca curta entre vizinhos)
+    const N = s.frames.length;
+    const pos = (theta / 360) * N;
+    let i0 = Math.floor(pos) % N, i1 = (i0 + 1) % N;
+    let mix = THREE.MathUtils.smoothstep(pos - Math.floor(pos), 0.42, 0.58);
+    if (!s.frames[i0] || !s.frames[i1]) { i0 = i1 = s.frames.findIndex(Boolean); mix = 0; }
+    if (i0 < 0) { this.group.visible = false; return; }
+    const want = [s.frames[i0], s.frames[i1]];
+    let [ta, tb] = this.tex;
+    if (tb.image === want[0] || ta.image === want[1]) [ta, tb] = [tb, ta];
+    if (ta.image !== want[0]) { ta.image = want[0]; ta.needsUpdate = true; }
+    if (tb.image !== want[1]) { tb.image = want[1]; tb.needsUpdate = true; }
+    // largura mantida: de frente/costas o corpo ocupa menos da foto (mangas para fora)
+    const side = Math.abs(Math.sin((theta * Math.PI) / 180));
+    for (const u of [this.colorMat.uniforms, this.depthMat.uniforms]) {
+      u.mapA.value = ta; u.mapB.value = tb; u.uMix.value = mix;
+      u.uOpacity.value = opacity;
+      u.uAxis.value = s.axisX;
+      u.uKeep.value = 0.31 + 0.08 * side;
+    }
+  }
 }
