@@ -151,14 +151,19 @@ export const SEQUENCE = [
   ['stand', 1.2], ['walkA', 0.9], ['walkB', 0.9], ['coffee', 1.4], ['gesture', 1.4], ['confident', 1.2],
 ];
 
-const SEQ_TOTAL = SEQUENCE.reduce((s, [, d]) => s + d, 0);
-const SEQ_STARTS = [];
-{ let t = 0; for (const [, d] of SEQUENCE) { SEQ_STARTS.push(t); t += d; } }
+// Sequência de poses-chave com duração relativa -> estrutura para amostragem
+export function makeKeys(list) {
+  const starts = [];
+  let t = 0;
+  for (const [, d] of list) { starts.push(t); t += d; }
+  return { list, starts, total: t };
+}
+const SEQ = makeKeys(SEQUENCE);
 
 // Tempo (0..1) em que cada pose-chave acontece — útil para sincronizar textos.
-export function keyTime(name) {
-  const i = SEQUENCE.findIndex(([n]) => n === name);
-  return i < 0 ? 0 : SEQ_STARTS[i] / SEQ_TOTAL;
+export function keyTime(name, keys = SEQ) {
+  const i = keys.list.findIndex(([n]) => n === name);
+  return i < 0 ? 0 : keys.starts[i] / keys.total;
 }
 
 function catmull(p0, p1, p2, p3, t) {
@@ -166,16 +171,19 @@ function catmull(p0, p1, p2, p3, t) {
   return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 }
 
-// Pose interpolada suavemente (Catmull-Rom) ao longo da sequência, t em 0..1
-export function sampleSequence(t, out = {}) {
-  const time = Math.min(0.99999, Math.max(0, t)) * SEQ_TOTAL;
+// Pose interpolada suavemente (Catmull-Rom) ao longo de uma sequência, t em 0..1
+export function sampleKeys(keys, t, out = {}) {
+  const { list, starts, total } = keys;
+  const time = Math.min(0.99999, Math.max(0, t)) * total;
   let i = 0;
-  while (i < SEQUENCE.length - 1 && SEQ_STARTS[i + 1] <= time) i++;
-  const local = (time - SEQ_STARTS[i]) / SEQUENCE[i][1];
-  const k = (j) => POSES[SEQUENCE[Math.max(0, Math.min(SEQUENCE.length - 1, j))][0]];
+  while (i < list.length - 1 && starts[i + 1] <= time) i++;
+  const local = (time - starts[i]) / list[i][1];
+  const k = (j) => POSES[list[Math.max(0, Math.min(list.length - 1, j))][0]];
   const a = k(i - 1), b = k(i), c = k(i + 1), d = k(i + 2);
   // leve ease para os movimentos "assentarem" nas poses-chave
   const e = local * local * (3 - 2 * local) * 0.55 + local * 0.45;
   for (const key of PARAM_KEYS) out[key] = catmull(a[key], b[key], c[key], d[key], e);
   return out;
 }
+
+export function sampleSequence(t, out = {}) { return sampleKeys(SEQ, t, out); }
